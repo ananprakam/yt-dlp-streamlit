@@ -13,6 +13,24 @@ TEMP_DIR = Path(tempfile.gettempdir()) / "youtube_mp3_downloads"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # --------------------------
+# COMMON YDL OPTIONS (ใช้ทั้งตรวจสอบและโหลด)
+# --------------------------
+COMMON_YDL_OPTS = {
+    "nocheckcertificate": True,
+    "geo_bypass": True,
+    "geo_bypass_country": "TH",
+    "cachedir": False,
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0"
+    },
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["web", "android"]
+        }
+    },
+}
+
+# --------------------------
 # SESSION STATE INIT
 # --------------------------
 if "urls" not in st.session_state:
@@ -40,11 +58,15 @@ def remove_field(index):
     st.rerun()
 
 def get_video_info(url):
-    ydl_opts = {"quiet": True, "skip_download": True}
+    ydl_opts = {
+        **COMMON_YDL_OPTS,
+        "quiet": True,
+        "skip_download": True,
+    }
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=False)
 
-# ✅ ฟังก์ชันดาวน์โหลดที่ถูกต้อง
 def download_audio(url):
 
     progress = st.progress(0)
@@ -60,40 +82,26 @@ def download_audio(url):
             progress.progress(100)
 
     ydl_opts = {
-    "format": "bestaudio/best",
-    "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
-    "noplaylist": True,
-    "quiet": True,
-    "nocheckcertificate": True,
-    "geo_bypass": True,
-    "geo_bypass_country": "TH",
-    "cachedir": False,
-    "http_headers": {
-        "User-Agent": "Mozilla/5.0"
-    },
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["web", "android"]
-        }
-    },
-    "postprocessors": [{
-        "key": "FFmpegExtractAudio",
-        "preferredcodec": "mp3",
-        "preferredquality": "320",
-    }],
-    "progress_hooks": [hook],
-}
-
+        **COMMON_YDL_OPTS,
+        "format": "bestaudio/best",
+        "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
+        "noplaylist": True,
+        "quiet": True,
+        "progress_hooks": [hook],
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "320",
+        }],
+    }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
 
-        # ✅ วิธีดึง path ที่ถูกต้อง
         file_path = ydl.prepare_filename(info)
         file_path = Path(file_path).with_suffix(".mp3")
 
     return file_path
-
 
 # --------------------------
 # UI
@@ -135,8 +143,9 @@ if st.button("🔍 ตรวจสอบลิงก์ทั้งหมด"):
                     "url": url
                 })
 
-            except Exception:
+            except Exception as e:
                 st.error(f"❌ ลิงก์มีปัญหา: {url}")
+                st.code(str(e))
 
 # --------------------------
 # SHOW VIDEO CARDS
@@ -177,7 +186,6 @@ for idx, item in enumerate(st.session_state.videos):
                 )
 
                 os.remove(file_path)
-
             else:
                 st.error("ไม่พบไฟล์ที่ดาวน์โหลด")
 
