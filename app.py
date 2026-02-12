@@ -1,0 +1,179 @@
+import streamlit as st
+import yt_dlp
+import os
+from pathlib import Path
+
+st.set_page_config(page_title="YouTube MP3 Downloader", page_icon="🎵", layout="centered")
+
+import tempfile
+
+TEMP_DIR = Path(tempfile.gettempdir()) / "youtube_mp3_downloads"
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+ydl_opts = {
+    "format": "bestaudio/best",
+    "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
+    "postprocessors": [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "320",
+    }],
+    "quiet": True,
+    "noplaylist": True,
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0"
+    }
+}
+
+
+# --------------------------
+# SESSION STATE INIT
+# --------------------------
+if "urls" not in st.session_state:
+    st.session_state.urls = [""]
+
+if "videos" not in st.session_state:
+    st.session_state.videos = []
+
+# --------------------------
+# FUNCTIONS
+# --------------------------
+def add_field():
+    st.session_state.urls.append("")
+
+def remove_field(index):
+    if len(st.session_state.urls) > 1:
+        st.session_state.urls.pop(index)
+    else:
+        st.session_state.urls = [""]
+
+    # ลบ widget key เก่า ป้องกัน index เพี้ยน
+    for key in list(st.session_state.keys()):
+        if key.startswith("url_"):
+            del st.session_state[key]
+
+    st.rerun()
+
+def get_video_info(url):
+    ydl_opts = {"quiet": True, "skip_download": True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(url, download=False)
+
+def download_audio(url, idx):
+
+    progress = st.progress(0)
+
+    def hook(d):
+        if d["status"] == "downloading":
+            downloaded = d.get("downloaded_bytes", 0)
+            total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
+            if total:
+                percent = int(min(downloaded / total * 100, 100))
+                progress.progress(percent)
+
+        elif d["status"] == "finished":
+            progress.progress(100)
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "320",
+        }],
+        "progress_hooks": [hook],
+        "quiet": True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        original = ydl.prepare_filename(info)
+        base, _ = os.path.splitext(original)
+        return base + ".mp3"
+
+# --------------------------
+# INPUT SECTION
+# --------------------------
+st.title("🎵 YouTube MP3 Downloader")
+st.subheader("🔗 วางลิงก์ YouTube")
+
+for i in range(len(st.session_state.urls)):
+    col1, col2 = st.columns([8,1])
+
+    with col1:
+        st.session_state.urls[i] = st.text_input(
+            f"Link {i+1}",
+            value=st.session_state.urls[i],
+            key=f"url_{i}"
+        )
+
+    with col2:
+        if st.button("❌", key=f"remove_{i}"):
+            remove_field(i)
+
+st.button("➕ เพิ่มช่อง", on_click=add_field)
+
+# --------------------------
+# CHECK BUTTON
+# --------------------------
+if st.button("🔍 ตรวจสอบลิงก์ทั้งหมด"):
+
+    st.session_state.videos = []
+
+    for url in st.session_state.urls:
+        if url.strip():
+            try:
+                with st.spinner("กำลังดึงข้อมูล..."):
+                    info = get_video_info(url)
+
+                st.session_state.videos.append({
+                    "info": info,
+                    "url": url
+                })
+
+            except Exception:
+                st.error(f"❌ ลิงก์มีปัญหา: {url}")
+
+# --------------------------
+# SHOW VIDEO CARDS
+# --------------------------
+for idx, item in enumerate(st.session_state.videos):
+
+    info = item["info"]
+    url = item["url"]
+
+    duration = info.get("duration", 0)
+    minutes = duration // 60
+    seconds = duration % 60
+
+    st.markdown(f"""
+    <div style="background:#1e1e1e;padding:20px;border-radius:15px;margin-bottom:20px;">
+        <img src="{info.get('thumbnail')}" width="100%" style="border-radius:10px;">
+        <h4 style="color:white;margin-top:10px;">{info.get('title')}</h4>
+        <p style="color:#b3b3b3;">👤 {info.get('uploader')}</p>
+        <p style="color:#b3b3b3;">⏱ {minutes}:{seconds:02d}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("🎧 ดาวน์โหลด MP3", key=f"dl_btn_{idx}"):
+
+        try:
+            file_path = download_audio(url, idx)
+
+            with open(file_path, "rb") as f:
+                audio_bytes = f.read()
+
+            st.download_button(
+                label="⬇️ ดาวน์โหลดไฟล์",
+                data=audio_bytes,
+                file_name=os.path.basename(file_path),
+                mime="audio/mp3",
+                key=f"download_{idx}"
+            )
+
+            os.remove(file_path)
+
+        except Exception:
+            st.error("❌ ดาวน์โหลดไม่สำเร็จ")
