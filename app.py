@@ -76,22 +76,33 @@ def download_audio(url, idx):
             progress.progress(100)
 
     ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "320",
-        }],
-        "progress_hooks": [hook],
-        "quiet": True,
-    }
+    "format": "bestaudio/best",
+    "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
+    "noplaylist": True,
+    "quiet": True,
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        original = ydl.prepare_filename(info)
-        base, _ = os.path.splitext(original)
-        return base + ".mp3"
+    # สำคัญมากสำหรับ Streamlit Cloud
+    "nocheckcertificate": True,
+
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0"
+    },
+
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android"]
+        }
+    },
+
+    "postprocessors": [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "320",
+    }],
+
+    "progress_hooks": [hook],
+}
+
 
 # --------------------------
 # INPUT SECTION
@@ -175,5 +186,7 @@ for idx, item in enumerate(st.session_state.videos):
 
             os.remove(file_path)
 
-        except Exception:
+        except Exception as e:
             st.error("❌ ดาวน์โหลดไม่สำเร็จ")
+            st.code(str(e))
+
