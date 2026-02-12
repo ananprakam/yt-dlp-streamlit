@@ -2,30 +2,15 @@ import streamlit as st
 import yt_dlp
 import os
 from pathlib import Path
+import tempfile
 
 st.set_page_config(page_title="YouTube MP3 Downloader", page_icon="🎵", layout="centered")
 
-import tempfile
-
+# --------------------------
+# TEMP DIRECTORY
+# --------------------------
 TEMP_DIR = Path(tempfile.gettempdir()) / "youtube_mp3_downloads"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
-
-
-ydl_opts = {
-    "format": "bestaudio/best",
-    "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
-    "postprocessors": [{
-        "key": "FFmpegExtractAudio",
-        "preferredcodec": "mp3",
-        "preferredquality": "320",
-    }],
-    "quiet": True,
-    "noplaylist": True,
-    "http_headers": {
-        "User-Agent": "Mozilla/5.0"
-    }
-}
-
 
 # --------------------------
 # SESSION STATE INIT
@@ -48,7 +33,6 @@ def remove_field(index):
     else:
         st.session_state.urls = [""]
 
-    # ลบ widget key เก่า ป้องกัน index เพี้ยน
     for key in list(st.session_state.keys()):
         if key.startswith("url_"):
             del st.session_state[key]
@@ -60,7 +44,8 @@ def get_video_info(url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=False)
 
-def download_audio(url, idx):
+# ✅ ฟังก์ชันดาวน์โหลดที่ถูกต้อง
+def download_audio(url):
 
     progress = st.progress(0)
 
@@ -71,41 +56,43 @@ def download_audio(url, idx):
             if total:
                 percent = int(min(downloaded / total * 100, 100))
                 progress.progress(percent)
-
         elif d["status"] == "finished":
             progress.progress(100)
 
     ydl_opts = {
-    "format": "bestaudio/best",
-    "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
-    "noplaylist": True,
-    "quiet": True,
+        "format": "bestaudio/best",
+        "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
+        "noplaylist": True,
+        "quiet": True,
+        "nocheckcertificate": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0"
+        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"]
+            }
+        },
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "320",
+        }],
+        "progress_hooks": [hook],
+    }
 
-    # สำคัญมากสำหรับ Streamlit Cloud
-    "nocheckcertificate": True,
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
 
-    "http_headers": {
-        "User-Agent": "Mozilla/5.0"
-    },
+        # ✅ วิธีดึง path ที่ถูกต้อง
+        file_path = ydl.prepare_filename(info)
+        file_path = Path(file_path).with_suffix(".mp3")
 
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android"]
-        }
-    },
-
-    "postprocessors": [{
-        "key": "FFmpegExtractAudio",
-        "preferredcodec": "mp3",
-        "preferredquality": "320",
-    }],
-
-    "progress_hooks": [hook],
-}
+    return file_path
 
 
 # --------------------------
-# INPUT SECTION
+# UI
 # --------------------------
 st.title("🎵 YouTube MP3 Downloader")
 st.subheader("🔗 วางลิงก์ YouTube")
@@ -171,22 +158,25 @@ for idx, item in enumerate(st.session_state.videos):
     if st.button("🎧 ดาวน์โหลด MP3", key=f"dl_btn_{idx}"):
 
         try:
-            file_path = download_audio(url, idx)
+            file_path = download_audio(url)
 
-            with open(file_path, "rb") as f:
-                audio_bytes = f.read()
+            if file_path.exists():
+                with open(file_path, "rb") as f:
+                    audio_bytes = f.read()
 
-            st.download_button(
-                label="⬇️ ดาวน์โหลดไฟล์",
-                data=audio_bytes,
-                file_name=os.path.basename(file_path),
-                mime="audio/mp3",
-                key=f"download_{idx}"
-            )
+                st.download_button(
+                    label="⬇️ ดาวน์โหลดไฟล์",
+                    data=audio_bytes,
+                    file_name=file_path.name,
+                    mime="audio/mp3",
+                    key=f"download_{idx}"
+                )
 
-            os.remove(file_path)
+                os.remove(file_path)
+
+            else:
+                st.error("ไม่พบไฟล์ที่ดาวน์โหลด")
 
         except Exception as e:
             st.error("❌ ดาวน์โหลดไม่สำเร็จ")
             st.code(str(e))
-
