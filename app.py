@@ -60,26 +60,30 @@ def download_audio(url):
             progress.progress(100)
 
     ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
-        "noplaylist": True,
-        "quiet": True,
-        "nocheckcertificate": True,
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0"
-        },
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android"]
-            }
-        },
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "320",
-        }],
-        "progress_hooks": [hook],
-    }
+    "format": "bestaudio/best",
+    "outtmpl": str(TEMP_DIR / "%(title)s_%(id)s.%(ext)s"),
+    "noplaylist": True,
+    "quiet": True,
+    "nocheckcertificate": True,
+    "geo_bypass": True,
+    "geo_bypass_country": "TH",
+    "cachedir": False,
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0"
+    },
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["web", "android"]
+        }
+    },
+    "postprocessors": [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "320",
+    }],
+    "progress_hooks": [hook],
+}
+
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
